@@ -167,3 +167,46 @@ td {
   padding: 60px;
   color: #718096;
 }
+
+/* === EMPHASIS: TOP 100 CONTEXT === */
+.header h1::after {
+  content: " · Top 100 largest companies";
+  font-size: 0.5em;
+  font-weight: 500;
+  color: #667eea;
+}
+
+/* === FILTER EMPHASIS === */
+.filters {
+  border-left: 6px solid #667eea;
+}
+
+/* === STAT CARDS: MORE CONTRAST === */
+.stat-card {
+  background: linear-gradient(135deg, #ffffff, #f4f6ff);
+}
+
+.stat-value {
+  color: #4c51bf;
+}
+
+/* === TABLE INTERACTION === */
+tbody tr:hover {
+  background: #eef2ff;
+  transition: background 0.2s ease;
+}
+
+/* === CHART SECTION EMPHASIS === */
+.chart-section {
+  background: linear-gradient(135deg, #ffffff, #f7f8ff);
+}
+
+/* === BUTTON POLISH === */
+button {
+  letter-spacing: 0.3px;
+}
+
+button:hover {
+  opacity: 0.95;
+}
+
