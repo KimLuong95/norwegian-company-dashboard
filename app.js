@@ -6,6 +6,8 @@ let chart;
 const BASE_URL = "https://data.brreg.no/enhetsregisteret/api/enheter";
 const FETCH_LIMIT = 500;
 
+const industryMap = new Map();
+
 // --------------------
 // INIT
 // --------------------
@@ -15,7 +17,7 @@ window.onload = () => {
 };
 
 // --------------------
-// MAIN FETCH
+// FETCH FROM BRREG
 // --------------------
 async function fetchCompanies(initialLoad = false) {
   const name = searchName.value.trim();
@@ -27,27 +29,36 @@ async function fetchCompanies(initialLoad = false) {
 
   if (name) url += `&navn=${encodeURIComponent(name)}`;
   if (minEmp) url += `&antallAnsatteFra=${minEmp}`;
-  if (industryCode) url += `&naeringskode=${encodeURIComponent(industryCode)}`;
-  if (type) url += `&organisasjonsform=${encodeURIComponent(type)}`;
+  if (industryCode) url += `&naeringskode=${industryCode}`;
+  if (type) url += `&organisasjonsform=${type}`;
 
   try {
     const res = await fetch(url);
     const data = await res.json();
 
     companies = (data._embedded?.enheter || [])
-      .map(e => ({
-        orgNr: e.organisasjonsnummer,
-        name: e.navn,
-        employees: e.antallAnsatte || 0,
-        industry: e.naeringskode1?.beskrivelse || "Unknown",
-        industryCode: e.naeringskode1?.kode || "",
-        type: e.organisasjonsform?.kode || "",
-        city: e.forretningsadresse?.poststed || ""
-      }))
+      .map(e => {
+        const code = e.naeringskode1?.kode || "";
+        const name = e.naeringskode1?.beskrivelse || "Unknown";
+
+        if (code && !industryMap.has(code)) {
+          industryMap.set(code, name);
+        }
+
+        return {
+          orgNr: e.organisasjonsnummer,
+          name: e.navn,
+          employees: e.antallAnsatte || 0,
+          industryCode: code,
+          industry: name,
+          type: e.organisasjonsform?.kode || "",
+          city: e.forretningsadresse?.poststed || ""
+        };
+      })
       .sort((a, b) => b.employees - a.employees)
       .slice(0, 100);
 
-    if (initialLoad) populateIndustryFilter(companies);
+    if (initialLoad) populateIndustryFilter();
 
     page = 1;
     updateAll();
@@ -84,17 +95,10 @@ function populateCompanyTypes() {
   });
 }
 
-function populateIndustryFilter(data) {
+function populateIndustryFilter() {
   industryFilter.innerHTML = `<option value="">All industries</option>`;
 
-  const uniqueIndustries = new Map();
-  data.forEach(c => {
-    if (c.industryCode && !uniqueIndustries.has(c.industryCode)) {
-      uniqueIndustries.set(c.industryCode, c.industry);
-    }
-  });
-
-  [...uniqueIndustries.entries()]
+  [...industryMap.entries()]
     .sort((a, b) => a[1].localeCompare(b[1]))
     .forEach(([code, name]) => {
       industryFilter.innerHTML +=
@@ -116,7 +120,6 @@ function updateAll() {
 // --------------------
 function updateStats() {
   totalCompanies.textContent = companies.length;
-
   largeCompanies.textContent =
     companies.filter(c => c.employees >= 1000).length;
 
@@ -125,7 +128,7 @@ function updateStats() {
     totalEmp ? Math.round(totalEmp / 1000) + "K" : "0K";
 
   totalIndustries.textContent =
-    new Set(companies.map(c => c.industry)).size;
+    new Set(companies.map(c => c.industryCode)).size;
 }
 
 // --------------------
@@ -133,6 +136,7 @@ function updateStats() {
 // --------------------
 function updateChart() {
   const counts = {};
+
   companies.forEach(c => {
     counts[c.industry] = (counts[c.industry] || 0) + 1;
   });
@@ -163,7 +167,7 @@ function updateChart() {
 }
 
 // --------------------
-// TABLE + PAGINATION
+// TABLE
 // --------------------
 function updateTable() {
   const start = (page - 1) * perPage;
@@ -175,7 +179,7 @@ function updateTable() {
         <tr>
           <th>Company</th>
           <th>Industry</th>
-          <th>Employees ↓</th>
+          <th>Employees</th>
           <th>Type</th>
           <th>City</th>
         </tr>
