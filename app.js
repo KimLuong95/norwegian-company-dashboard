@@ -6,7 +6,8 @@ let chart;
 let currentSort = { column: "employees", direction: "desc" };
 
 const ENHETS_URL = "https://data.brreg.no/enhetsregisteret/api/enheter";
-const REGNSKAP_URL = "https://data.brreg.no/regnskapsregisteret/regnskap";
+const REGNSKAP_PROXY =
+  "https://corsproxy.io/?https://data.brreg.no/regnskapsregisteret/regnskap";
 const FETCH_LIMIT = 500;
 
 // ---------------- INIT ----------------
@@ -62,21 +63,19 @@ async function fetchCompanies(initialLoad = false) {
   updateAll();
 }
 
-// ---------------- FETCH FINANCIALS (FIXED) ----------------
+// ---------------- FETCH FINANCIALS (CORS-PROXY FIXED) ----------------
 async function enrichWithFinancials(list) {
   await Promise.all(
     list.map(async c => {
       try {
-        const res = await fetch(`${REGNSKAP_URL}/${c.orgNr}`);
+        const res = await fetch(`${REGNSKAP_PROXY}/${c.orgNr}`);
         if (!res.ok) return;
 
         const json = await res.json();
 
-        // 🔑 REAL FIX: regnskaper is an ARRAY
         const regnskaper = json.regnskaper;
         if (!Array.isArray(regnskaper) || regnskaper.length === 0) return;
 
-        // Pick latest year
         const latest = regnskaper.sort(
           (a, b) =>
             (b.regnskapsperiode?.aar || 0) -
@@ -98,8 +97,8 @@ async function enrichWithFinancials(list) {
         c.equity =
           bal?.egenkapitalGjeld?.egenkapital ?? null;
 
-      } catch {
-        // ignore
+      } catch (err) {
+        console.warn("Regnskap fetch failed", c.orgNr);
       }
     })
   );
