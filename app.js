@@ -62,7 +62,7 @@ async function fetchCompanies(initialLoad = false) {
   updateAll();
 }
 
-// ---------------- FETCH FINANCIALS ----------------
+// ---------------- FETCH FINANCIALS (FIXED) ----------------
 async function enrichWithFinancials(list) {
   await Promise.all(
     list.map(async c => {
@@ -70,10 +70,21 @@ async function enrichWithFinancials(list) {
         const res = await fetch(`${REGNSKAP_URL}/${c.orgNr}`);
         if (!res.ok) return;
 
-        const j = await res.json();
+        const json = await res.json();
 
-        const rr = j.resultatregnskap;
-        const bal = j.balanse;
+        // 🔑 REAL FIX: regnskaper is an ARRAY
+        const regnskaper = json.regnskaper;
+        if (!Array.isArray(regnskaper) || regnskaper.length === 0) return;
+
+        // Pick latest year
+        const latest = regnskaper.sort(
+          (a, b) =>
+            (b.regnskapsperiode?.aar || 0) -
+            (a.regnskapsperiode?.aar || 0)
+        )[0];
+
+        const rr = latest.resultatregnskap;
+        const bal = latest.balanse;
 
         c.revenue =
           rr?.driftsinntekter?.salgsinntekt ?? null;
@@ -88,7 +99,7 @@ async function enrichWithFinancials(list) {
           bal?.egenkapitalGjeld?.egenkapital ?? null;
 
       } catch {
-        // ignore per-company errors
+        // ignore
       }
     })
   );
