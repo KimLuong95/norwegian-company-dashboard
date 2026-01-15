@@ -6,7 +6,7 @@ let chart;
 let currentSort = { column: "employees", direction: "desc" };
 
 const ENHETS_URL = "https://data.brreg.no/enhetsregisteret/api/enheter";
-const REGNSKAP_URL = "https://data.brreg.no/regnskapsregisteret/regnskap/v3/statistics";
+const REGNSKAP_URL = "https://data.brreg.no/regnskapsregisteret/regnskap/v3/opplysninger";
 const FETCH_LIMIT = 500;
 
 // ---------------- INIT ----------------
@@ -19,7 +19,7 @@ window.onload = () => {
 async function fetchCompanies(initialLoad = false) {
   const name = searchName.value.trim();
   const minEmp = minEmployees.value;
-  const minRevenue = parseInt(minRevenueInput.value || "0") * 1_000_000;
+  const minRevenueMNOK = parseInt(minRevenueInput.value || "0");
   const industryCode = industryFilter.value;
   const type = typeFilter.value;
 
@@ -50,8 +50,9 @@ async function fetchCompanies(initialLoad = false) {
 
   await enrichFinancials(base);
 
+  // Apply revenue filter AFTER enrichment
   companies = base.filter(c =>
-    !minRevenue || (c.revenue && c.revenue >= minRevenue)
+    !minRevenueMNOK || (c.revenue && c.revenue >= minRevenueMNOK * 1_000_000)
   );
 
   if (initialLoad) populateIndustryFilter(base);
@@ -68,12 +69,21 @@ async function enrichFinancials(list) {
       try {
         const r = await fetch(`${REGNSKAP_URL}/${c.orgNr}`);
         if (!r.ok) return;
+
         const j = await r.json();
-        c.revenue = j?.salgsinntekt ?? null;
-        c.operatingResult = j?.driftsresultat ?? null;
-        c.assets = j?.sumEiendeler ?? null;
-        c.equity = j?.egenkapital ?? null;
-      } catch {}
+        const rr = j?.resultatregnskap;
+        const bal = j?.balanse;
+
+        if (!rr || !bal) return;
+
+        c.revenue = rr.salgsinntekt ?? null;
+        c.operatingResult = rr.driftsresultat ?? null;
+        c.assets = bal.sumEiendeler ?? null;
+        c.equity = bal.egenkapital ?? null;
+
+      } catch {
+        // silently ignore
+      }
     })
   );
 }
