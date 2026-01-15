@@ -6,7 +6,7 @@ let chart;
 let currentSort = { column: "employees", direction: "desc" };
 
 const ENHETS_URL = "https://data.brreg.no/enhetsregisteret/api/enheter";
-const REGNSKAP_URL = "https://data.brreg.no/regnskapsregisteret/regnskap/v3/opplysninger";
+const REGNSKAP_URL = "https://data.brreg.no/regnskapsregisteret/regnskap/opplysninger";
 const FETCH_LIMIT = 500;
 
 // ---------------- INIT ----------------
@@ -216,3 +216,4 @@ function updateTable() {
 function fmt(v) {
   return v == null ? "–" : Math.round(v / 1_000_000).toLocaleString();
 }
+
