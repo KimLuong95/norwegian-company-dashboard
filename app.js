@@ -1,44 +1,56 @@
-let allCompanies = [];
 let companies = [];
 let page = 1;
 const perPage = 20;
 let chart;
 
 const BASE_URL = "https://data.brreg.no/enhetsregisteret/api/enheter";
-const PAGE_SIZE = 200;
+const FETCH_LIMIT = 500;
 
 // --------------------
 // INIT
 // --------------------
 window.onload = () => {
   populateCompanyTypes();
-  fetchCompanies();
+  fetchCompanies(true);
 };
 
 // --------------------
-// FETCH FROM BRREG
+// MAIN FETCH
 // --------------------
-async function fetchCompanies() {
-  let url = `${BASE_URL}?size=${PAGE_SIZE}&sort=antallAnsatte,desc`;
+async function fetchCompanies(initialLoad = false) {
+  const name = searchName.value.trim();
+  const minEmp = minEmployees.value;
+  const industryCode = industryFilter.value;
+  const type = typeFilter.value;
+
+  let url = `${BASE_URL}?size=${FETCH_LIMIT}&sort=antallAnsatte,desc`;
+
+  if (name) url += `&navn=${encodeURIComponent(name)}`;
+  if (minEmp) url += `&antallAnsatteFra=${minEmp}`;
+  if (industryCode) url += `&naeringskode=${encodeURIComponent(industryCode)}`;
+  if (type) url += `&organisasjonsform=${encodeURIComponent(type)}`;
 
   try {
     const res = await fetch(url);
     const data = await res.json();
 
-    allCompanies = (data._embedded?.enheter || [])
+    companies = (data._embedded?.enheter || [])
       .map(e => ({
         orgNr: e.organisasjonsnummer,
         name: e.navn,
         employees: e.antallAnsatte || 0,
         industry: e.naeringskode1?.beskrivelse || "Unknown",
+        industryCode: e.naeringskode1?.kode || "",
         type: e.organisasjonsform?.kode || "",
         city: e.forretningsadresse?.poststed || ""
       }))
       .sort((a, b) => b.employees - a.employees)
       .slice(0, 100);
 
-    populateIndustryFilter();
-    applyFilters();
+    if (initialLoad) populateIndustryFilter(companies);
+
+    page = 1;
+    updateAll();
 
   } catch (err) {
     console.error(err);
@@ -48,23 +60,10 @@ async function fetchCompanies() {
 }
 
 // --------------------
-// FILTERS
+// FILTER ACTIONS
 // --------------------
 function applyFilters() {
-  const name = searchName.value.toLowerCase();
-  const minEmp = parseInt(minEmployees.value) || 0;
-  const industry = industryFilter.value;
-  const type = typeFilter.value;
-
-  companies = allCompanies.filter(c =>
-    (!name || c.name.toLowerCase().includes(name)) &&
-    (!industry || c.industry === industry) &&
-    (!type || c.type === type) &&
-    c.employees >= minEmp
-  );
-
-  page = 1;
-  updateAll();
+  fetchCompanies(false);
 }
 
 function resetFilters() {
@@ -72,26 +71,35 @@ function resetFilters() {
   minEmployees.value = "";
   industryFilter.value = "";
   typeFilter.value = "";
-  applyFilters();
+  fetchCompanies(false);
 }
 
 // --------------------
 // FILTER DROPDOWNS
 // --------------------
 function populateCompanyTypes() {
+  typeFilter.innerHTML = "";
   ["", "AS", "ASA", "SA", "ENK", "ANS", "KS", "SF"].forEach(t => {
     typeFilter.innerHTML += `<option value="${t}">${t || "All types"}</option>`;
   });
 }
 
-function populateIndustryFilter() {
+function populateIndustryFilter(data) {
   industryFilter.innerHTML = `<option value="">All industries</option>`;
 
-  [...new Set(allCompanies.map(c => c.industry))]
-    .sort()
-    .forEach(ind =>
-      industryFilter.innerHTML += `<option value="${ind}">${ind}</option>`
-    );
+  const uniqueIndustries = new Map();
+  data.forEach(c => {
+    if (c.industryCode && !uniqueIndustries.has(c.industryCode)) {
+      uniqueIndustries.set(c.industryCode, c.industry);
+    }
+  });
+
+  [...uniqueIndustries.entries()]
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .forEach(([code, name]) => {
+      industryFilter.innerHTML +=
+        `<option value="${code}">${name}</option>`;
+    });
 }
 
 // --------------------
@@ -108,6 +116,7 @@ function updateAll() {
 // --------------------
 function updateStats() {
   totalCompanies.textContent = companies.length;
+
   largeCompanies.textContent =
     companies.filter(c => c.employees >= 1000).length;
 
@@ -124,7 +133,6 @@ function updateStats() {
 // --------------------
 function updateChart() {
   const counts = {};
-
   companies.forEach(c => {
     counts[c.industry] = (counts[c.industry] || 0) + 1;
   });
@@ -155,7 +163,7 @@ function updateChart() {
 }
 
 // --------------------
-// TABLE
+// TABLE + PAGINATION
 // --------------------
 function updateTable() {
   const start = (page - 1) * perPage;
