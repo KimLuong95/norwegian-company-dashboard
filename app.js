@@ -1,10 +1,11 @@
+let allCompanies = [];
 let companies = [];
 let page = 1;
 const perPage = 20;
 let chart;
 
 const BASE_URL = "https://data.brreg.no/enhetsregisteret/api/enheter";
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 200;
 
 // --------------------
 // INIT
@@ -18,36 +19,26 @@ window.onload = () => {
 // FETCH FROM BRREG
 // --------------------
 async function fetchCompanies() {
-  const name = searchName.value.trim();
-  const minEmp = minEmployees.value;
-  const type = typeFilter.value;
-
   let url = `${BASE_URL}?size=${PAGE_SIZE}&sort=antallAnsatte,desc`;
-
-  if (name) url += `&navn=${encodeURIComponent(name)}`;
-  if (minEmp) url += `&antallAnsatteFra=${minEmp}`;
-  if (type) url += `&organisasjonsform=${type}`;
 
   try {
     const res = await fetch(url);
     const data = await res.json();
 
-    companies = (data._embedded?.enheter || []).map(e => ({
-      orgNr: e.organisasjonsnummer,
-      name: e.navn,
-      employees: e.antallAnsatte || 0,
-      industry: e.naeringskode1?.beskrivelse || "Unknown",
-      type: e.organisasjonsform?.kode || "",
-      city: e.forretningsadresse?.poststed || ""
-    }));
-
-    // Always work on top 100 companies by employees
-    companies = companies
+    allCompanies = (data._embedded?.enheter || [])
+      .map(e => ({
+        orgNr: e.organisasjonsnummer,
+        name: e.navn,
+        employees: e.antallAnsatte || 0,
+        industry: e.naeringskode1?.beskrivelse || "Unknown",
+        type: e.organisasjonsform?.kode || "",
+        city: e.forretningsadresse?.poststed || ""
+      }))
       .sort((a, b) => b.employees - a.employees)
       .slice(0, 100);
 
-    page = 1;
-    updateAll();
+    populateIndustryFilter();
+    applyFilters();
 
   } catch (err) {
     console.error(err);
@@ -60,23 +51,47 @@ async function fetchCompanies() {
 // FILTERS
 // --------------------
 function applyFilters() {
-  fetchCompanies();
+  const name = searchName.value.toLowerCase();
+  const minEmp = parseInt(minEmployees.value) || 0;
+  const industry = industryFilter.value;
+  const type = typeFilter.value;
+
+  companies = allCompanies.filter(c =>
+    (!name || c.name.toLowerCase().includes(name)) &&
+    (!industry || c.industry === industry) &&
+    (!type || c.type === type) &&
+    c.employees >= minEmp
+  );
+
+  page = 1;
+  updateAll();
 }
 
 function resetFilters() {
   searchName.value = "";
   minEmployees.value = "";
+  industryFilter.value = "";
   typeFilter.value = "";
-  fetchCompanies();
+  applyFilters();
 }
 
 // --------------------
-// STATIC FILTERS
+// FILTER DROPDOWNS
 // --------------------
 function populateCompanyTypes() {
   ["", "AS", "ASA", "SA", "ENK", "ANS", "KS", "SF"].forEach(t => {
     typeFilter.innerHTML += `<option value="${t}">${t || "All types"}</option>`;
   });
+}
+
+function populateIndustryFilter() {
+  industryFilter.innerHTML = `<option value="">All industries</option>`;
+
+  [...new Set(allCompanies.map(c => c.industry))]
+    .sort()
+    .forEach(ind =>
+      industryFilter.innerHTML += `<option value="${ind}">${ind}</option>`
+    );
 }
 
 // --------------------
@@ -94,18 +109,18 @@ function updateAll() {
 function updateStats() {
   totalCompanies.textContent = companies.length;
   largeCompanies.textContent =
-    companies.filter(c => c.employees >= 100).length;
+    companies.filter(c => c.employees >= 1000).length;
 
   const totalEmp = companies.reduce((s, c) => s + c.employees, 0);
   totalEmployees.textContent =
-    Math.round(totalEmp / 1000) + "K";
+    totalEmp ? Math.round(totalEmp / 1000) + "K" : "0K";
 
   totalIndustries.textContent =
     new Set(companies.map(c => c.industry)).size;
 }
 
 // --------------------
-// CHART: TOP INDUSTRIES (TOP 100)
+// CHART
 // --------------------
 function updateChart() {
   const counts = {};
@@ -126,7 +141,8 @@ function updateChart() {
       labels: top.map(t => t[0]),
       datasets: [{
         data: top.map(t => t[1]),
-        backgroundColor: "rgba(102,126,234,0.8)"
+        backgroundColor: "rgba(102,126,234,0.85)",
+        borderRadius: 8
       }]
     },
     options: {
@@ -139,7 +155,7 @@ function updateChart() {
 }
 
 // --------------------
-// SORTABLE TABLE (EMPLOYEES DESC)
+// TABLE
 // --------------------
 function updateTable() {
   const start = (page - 1) * perPage;
@@ -149,22 +165,20 @@ function updateTable() {
     <table>
       <thead>
         <tr>
-          <th>Org nr</th>
           <th>Company</th>
           <th>Industry</th>
-          <th>Type</th>
           <th>Employees ↓</th>
+          <th>Type</th>
           <th>City</th>
         </tr>
       </thead>
       <tbody>
         ${rows.map(c => `
           <tr>
-            <td>${c.orgNr}</td>
-            <td>${c.name}</td>
+            <td><strong>${c.name}</strong></td>
             <td>${c.industry}</td>
-            <td>${c.type}</td>
             <td>${c.employees.toLocaleString()}</td>
+            <td>${c.type}</td>
             <td>${c.city}</td>
           </tr>
         `).join("")}
