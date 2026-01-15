@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Norwegian Company Intelligence</title>
+
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+</head>
+<body>
+  <div class="container">
+
+    <div class="header">
+      <h1>🇳🇴 Norwegian Company Intelligence</h1>
+      <p class="subtitle">Real-time Business Intelligence Dashboard</p>
+      <div class="data-notice">
+        📊 Demo data. Not live Brønnøysund data.
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Total Companies</div>
+        <div class="stat-value" id="totalCompanies">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Large (1000+ emp)</div>
+        <div class="stat-value" id="largeCompanies">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Employees</div>
+        <div class="stat-value" id="totalEmployees">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Industries</div>
+        <div class="stat-value" id="totalIndustries">0</div>
+      </div>
+    </div>
+
+    <div class="filters">
+      <h2>🔍 Search & Filter</h2>
+
+      <div class="filter-grid">
+        <div>
+          <label>Company Name</label>
+          <input id="searchName" placeholder="e.g. Equinor">
+        </div>
+        <div>
+          <label>Industry</label>
+          <select id="industryFilter">
+            <option value="">All industries</option>
+          </select>
+        </div>
+        <div>
+          <label>Minimum employees</label>
+          <input id="minEmployees" type="number">
+        </div>
+        <div>
+          <label>Company type</label>
+          <select id="typeFilter">
+            <option value="">All types</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button onclick="applyFilters()">Apply filters</button>
+        <button class="btn-reset" onclick="resetFilters()">Reset</button>
+      </div>
+    </div>
+
+    <div class="chart-section">
+      <h2>📊 Top industries</h2>
+      <canvas id="industryChart"></canvas>
+    </div>
+
+    <div class="table-container">
+      <h2>📋 Company directory</h2>
+      <div id="tableContent"></div>
+      <div class="pagination" id="pagination"></div>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
