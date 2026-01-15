@@ -1,265 +1,180 @@
+// ==============================
+// CONFIG
+// ==============================
+const BACKEND_BASE = "https://norwegian-company-dashboard.vercel.app";
+const PER_PAGE = 20;
+
+// ==============================
+// STATE
+// ==============================
 let companies = [];
 let page = 1;
-const perPage = 20;
-let chart;
+let sortKey = "employees";
+let sortDir = "desc";
 
-let currentSort = { column: "employees", direction: "desc" };
+// ==============================
+// HELPERS
+// ==============================
+const formatNumber = (n) =>
+  n === null || n === undefined ? "–" : n.toLocaleString("no-NO");
 
-const ENHETS_URL = "https://data.brreg.no/enhetsregisteret/api/enheter";
-const REGNSKAP_PROXY =
-  "https://corsproxy.io/?https://data.brreg.no/regnskapsregisteret/regnskap";
-const FETCH_LIMIT = 500;
+const formatMNOK = (n) =>
+  n === null || n === undefined
+    ? "–"
+    : Math.round(n / 1_000_000).toLocaleString("no-NO");
 
-// ---------------- INIT ----------------
-window.onload = () => {
-  populateCompanyTypes();
-  fetchCompanies(true);
-};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ---------------- FETCH COMPANIES ----------------
-async function fetchCompanies(initialLoad = false) {
-  const name = searchName.value.trim();
-  const minEmp = minEmployees.value;
-  const minRevenueMNOK = parseInt(minRevenueInput.value || "0");
-  const industryCode = industryFilter.value;
-  const type = typeFilter.value;
+// ==============================
+// FETCH TOP COMPANIES (DEMO SET)
+// ==============================
+async function loadCompanies() {
+  // Simple demo list to prove pipeline works
+  // You can later replace this with live Enhetsregisteret queries
+  const base = [
+    { name: "BDO AS", orgnr: "993606650", employees: 1288 },
+    { name: "BDO ADVOKATER AS", orgnr: "996449318", employees: 84 }
+  ];
 
-  let url = `${ENHETS_URL}?size=${FETCH_LIMIT}&sort=antallAnsatte,desc`;
-  if (name) url += `&navn=${encodeURIComponent(name)}`;
-  if (minEmp) url += `&antallAnsatteFra=${minEmp}`;
-  if (industryCode) url += `&naeringskode=${industryCode}`;
-  if (type) url += `&organisasjonsform=${type}`;
+  companies = [];
 
-  const res = await fetch(url);
-  const data = await res.json();
+  for (const c of base) {
+    const financials = await fetchFinancials(c.orgnr);
+    companies.push({ ...c, financials });
+    await sleep(300); // be nice to Brreg
+  }
 
-  let base = (data._embedded?.enheter || [])
-    .map(e => ({
-      orgNr: e.organisasjonsnummer,
-      name: e.navn,
-      employees: e.antallAnsatte || 0,
-      industry: e.naeringskode1?.beskrivelse || "Unknown",
-      industryCode: e.naeringskode1?.kode || "",
-      type: e.organisasjonsform?.kode || "",
-      revenue: null,
-      operatingResult: null,
-      assets: null,
-      equity: null
-    }))
-    .sort((a, b) => b.employees - a.employees)
-    .slice(0, 100);
+  render();
+}
 
-  await enrichWithFinancials(base);
+// ==============================
+// FETCH FINANCIALS (REAL DATA)
+// ==============================
+async function fetchFinancials(orgnr) {
+  try {
+    const res = await fetch(
+      `${BACKEND_BASE}/api/regnskap?orgnr=${orgnr}`
+    );
 
-  companies = base.filter(c =>
-    !minRevenueMNOK ||
-    (c.revenue && c.revenue >= minRevenueMNOK * 1_000_000)
+    if (!res.ok) return null;
+
+    const data = await res.json();
+
+    return {
+      year: data?.regnskapsperiode?.aar ?? null,
+      revenue: data?.resultatregnskap?.driftsinntekter ?? null,
+      operatingResult:
+        data?.resultatregnskap?.driftsresultat ?? null,
+      equity: data?.balanse?.egenkapital ?? null,
+      assets: data?.balanse?.sumEiendeler ?? null
+    };
+  } catch {
+    return null;
+  }
+}
+
+// ==============================
+// SORTING
+// ==============================
+function sortBy(key) {
+  if (sortKey === key) {
+    sortDir = sortDir === "asc" ? "desc" : "asc";
+  } else {
+    sortKey = key;
+    sortDir = "desc";
+  }
+  render();
+}
+
+function sortedCompanies() {
+  return [...companies].sort((a, b) => {
+    const av =
+      keyValue(a, sortKey) ?? -Infinity;
+    const bv =
+      keyValue(b, sortKey) ?? -Infinity;
+
+    return sortDir === "asc" ? av - bv : bv - av;
+  });
+}
+
+function keyValue(c, key) {
+  if (key === "employees") return c.employees;
+  return c.financials?.[key] ?? null;
+}
+
+// ==============================
+// RENDER
+// ==============================
+function render() {
+  renderStats();
+  renderTable();
+}
+
+function renderStats() {
+  document.getElementById("totalCompanies").textContent =
+    companies.length;
+
+  document.getElementById("largeCompanies").textContent =
+    companies.filter((c) => c.employees >= 1000).length;
+
+  const totalEmp = companies.reduce(
+    (s, c) => s + c.employees,
+    0
+  );
+  document.getElementById("totalEmployees").textContent =
+    formatNumber(totalEmp);
+
+  document.getElementById("totalIndustries").textContent =
+    "–";
+}
+
+// ==============================
+// TABLE
+// ==============================
+function renderTable() {
+  const start = (page - 1) * PER_PAGE;
+  const rows = sortedCompanies().slice(
+    start,
+    start + PER_PAGE
   );
 
-  if (initialLoad) populateIndustryFilter(base);
-
-  page = 1;
-  sortCompanies(currentSort.column, true);
-  updateAll();
-}
-
-// ---------------- FETCH FINANCIALS (CORS-PROXY FIXED) ----------------
-async function enrichWithFinancials(list) {
-  for (const c of list) {
-    try {
-      const url =
-        "https://api.allorigins.win/raw?url=" +
-        encodeURIComponent(
-          `https://data.brreg.no/regnskapsregisteret/regnskap/${c.orgNr}`
-        );
-
-      const res = await fetch(url);
-      if (!res.ok) {
-        console.warn("Financial fetch failed", c.orgNr, res.status);
-        continue;
-      }
-
-      const json = await res.json();
-      const regnskaper = json.regnskaper;
-
-      if (!Array.isArray(regnskaper) || regnskaper.length === 0) {
-        console.warn("No regnskap data", c.orgNr);
-        continue;
-      }
-
-      const latest = regnskaper.sort(
-        (a, b) =>
-          (b.regnskapsperiode?.aar || 0) -
-          (a.regnskapsperiode?.aar || 0)
-      )[0];
-
-      const rr = latest.resultatregnskap || {};
-      const bal = latest.balanse || {};
-
-      // Revenue: handle both variants
-      c.revenue =
-        rr?.driftsinntekter?.sumDriftsinntekter ??
-        rr?.driftsinntekter?.salgsinntekt ??
-        null;
-
-      c.operatingResult = rr?.driftsresultat ?? null;
-
-      c.assets = bal?.eiendeler?.sumEiendeler ?? null;
-
-      c.equity =
-        bal?.egenkapitalGjeld?.egenkapital ??
-        null;
-
-    } catch (err) {
-      console.error("Regnskap error", c.orgNr, err);
-    }
-  }
-}
-
-
-// ---------------- FILTERS ----------------
-function applyFilters() {
-  fetchCompanies(false);
-}
-
-function resetFilters() {
-  searchName.value = "";
-  minEmployees.value = "";
-  minRevenueInput.value = "";
-  industryFilter.value = "";
-  typeFilter.value = "";
-  fetchCompanies(false);
-}
-
-// ---------------- DROPDOWNS ----------------
-function populateCompanyTypes() {
-  ["", "AS", "ASA", "SA", "ENK", "ANS", "KS", "SF"].forEach(t => {
-    typeFilter.innerHTML +=
-      `<option value="${t}">${t || "All types"}</option>`;
-  });
-}
-
-function populateIndustryFilter(data) {
-  industryFilter.innerHTML = `<option value="">All industries</option>`;
-  const map = new Map();
-  data.forEach(c => map.set(c.industryCode, c.industry));
-  [...map.entries()]
-    .sort((a, b) => a[1].localeCompare(b[1]))
-    .forEach(([code, name]) => {
-      industryFilter.innerHTML +=
-        `<option value="${code}">${name}</option>`;
-    });
-}
-
-// ---------------- SORT ----------------
-function sortCompanies(column, silent = false) {
-  if (!silent) {
-    if (currentSort.column === column) {
-      currentSort.direction =
-        currentSort.direction === "asc" ? "desc" : "asc";
-    } else {
-      currentSort.column = column;
-      currentSort.direction = "desc";
-    }
-  }
-
-  companies.sort((a, b) => {
-    const A = a[column] ?? -Infinity;
-    const B = b[column] ?? -Infinity;
-    return currentSort.direction === "asc" ? A - B : B - A;
-  });
-
-  page = 1;
-  updateTable();
-}
-
-// ---------------- UPDATE ----------------
-function updateAll() {
-  updateStats();
-  updateChart();
-  updateTable();
-}
-
-function updateStats() {
-  totalCompanies.textContent = companies.length;
-  largeCompanies.textContent =
-    companies.filter(c => c.employees >= 1000).length;
-  totalEmployees.textContent =
-    Math.round(
-      companies.reduce((s, c) => s + c.employees, 0) / 1000
-    ) + "K";
-  totalIndustries.textContent =
-    new Set(companies.map(c => c.industryCode)).size;
-}
-
-// ---------------- CHART ----------------
-function updateChart() {
-  const counts = {};
-  companies.forEach(c => {
-    counts[c.industry] = (counts[c.industry] || 0) + 1;
-  });
-
-  const top = Object.entries(counts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10);
-
-  if (chart) chart.destroy();
-  chart = new Chart(industryChart, {
-    type: "bar",
-    data: {
-      labels: top.map(t => t[0]),
-      datasets: [{
-        data: top.map(t => t[1]),
-        backgroundColor: "#667eea"
-      }]
-    },
-    options: {
-      plugins: { legend: { display: false } }
-    }
-  });
-}
-
-// ---------------- TABLE ----------------
-function updateTable() {
-  const start = (page - 1) * perPage;
-  const rows = companies.slice(start, start + perPage);
-
-  tableContent.innerHTML = `
+  let html = `
     <table>
       <thead>
         <tr>
-          <th onclick="sortCompanies('name')">Company</th>
-          <th onclick="sortCompanies('employees')">Employees</th>
-          <th onclick="sortCompanies('revenue')">Revenue (MNOK)</th>
-          <th onclick="sortCompanies('operatingResult')">Op. result</th>
-          <th onclick="sortCompanies('equity')">Equity</th>
-          <th onclick="sortCompanies('assets')">Assets</th>
+          <th>Company</th>
+          <th onclick="sortBy('employees')">Employees</th>
+          <th onclick="sortBy('revenue')">Revenue (MNOK)</th>
+          <th onclick="sortBy('operatingResult')">Op. result</th>
+          <th onclick="sortBy('equity')">Equity</th>
+          <th onclick="sortBy('assets')">Assets</th>
         </tr>
       </thead>
       <tbody>
-        ${rows.map(c => `
-          <tr>
-            <td>${c.name}</td>
-            <td>${c.employees.toLocaleString()}</td>
-            <td>${fmt(c.revenue)}</td>
-            <td>${fmt(c.operatingResult)}</td>
-            <td>${fmt(c.equity)}</td>
-            <td>${fmt(c.assets)}</td>
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>
   `;
 
-  const pages = Math.ceil(companies.length / perPage);
-  pagination.innerHTML = `
-    ${page > 1 ? `<button onclick="page--;updateTable()">← Prev</button>` : ""}
-    <button disabled>Page ${page} / ${pages}</button>
-    ${page < pages ? `<button onclick="page++;updateTable()">Next →</button>` : ""}
-  `;
+  for (const c of rows) {
+    html += `
+      <tr>
+        <td><strong>${c.name}</strong></td>
+        <td>${formatNumber(c.employees)}</td>
+        <td>${formatMNOK(c.financials?.revenue)}</td>
+        <td>${formatMNOK(c.financials?.operatingResult)}</td>
+        <td>${formatMNOK(c.financials?.equity)}</td>
+        <td>${formatMNOK(c.financials?.assets)}</td>
+      </tr>
+    `;
+  }
+
+  html += "</tbody></table>";
+  document.getElementById("tableContent").innerHTML = html;
+
+  document.getElementById(
+    "pagination"
+  ).innerHTML = `<button disabled>Page ${page} / 1</button>`;
 }
 
-function fmt(v) {
-  return v == null ? "–" : Math.round(v / 1_000_000).toLocaleString();
-}
-
+// ==============================
+// INIT
+// ==============================
+window.addEventListener("load", loadCompanies);
