@@ -2,91 +2,198 @@
 <html lang="no">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Norwegian Company Intelligence</title>
+  <title>Norwegian Company Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <link rel="stylesheet" href="styles.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f5f7fb;
+      margin: 0;
+      padding: 20px;
+      color: #1a202c;
+    }
+
+    h1 {
+      margin-bottom: 6px;
+    }
+
+    .notice {
+      color: #4a5568;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #4a5568;
+    }
+
+    input, select, button {
+      padding: 8px;
+      font-size: 14px;
+      width: 100%;
+    }
+
+    button {
+      cursor: pointer;
+      background: #667eea;
+      border: none;
+      color: white;
+      border-radius: 4px;
+    }
+
+    button.secondary {
+      background: #718096;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .stat {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+    }
+
+    .stat .label {
+      font-size: 12px;
+      color: #718096;
+    }
+
+    .stat .value {
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    .card {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: left;
+    }
+
+    th {
+      cursor: pointer;
+      background: #edf2f7;
+      user-select: none;
+    }
+
+    th:hover {
+      background: #e2e8f0;
+    }
+
+    .pagination {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 12px;
+    }
+  </style>
 </head>
+
 <body>
-  <div class="container">
-    
-    <div class="header">
-      <h1>Live Data from Brønnøysundregistrene</h1>
-      <p class="subtitle">Real-time Business Intelligence Dashboard</p>
-        <div class="data-notice">
-          📊 Live data from Brønnøysundregistrene (Enhetsregisteret API).  
-          Data is fetched on demand and limited per query (pagination).  
-          The dashboard shows the current result set, not the full national population at once.
-        </div>
-    </div>
 
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-label">Total Companies</div>
-        <div class="stat-value" id="totalCompanies">0</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Large (1000+ emp)</div>
-        <div class="stat-value" id="largeCompanies">0</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Total Employees</div>
-        <div class="stat-value" id="totalEmployees">0</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Industries</div>
-        <div class="stat-value" id="totalIndustries">0</div>
-      </div>
-    </div>
+<h1>Norwegian Company Intelligence</h1>
+<div class="notice">
+  Live data from Brønnøysundregistrene (Enhetsregisteret + Regnskapsregisteret).  
+  Top 100 companies per filter. Financial figures are latest available annual accounts.
+</div>
 
-    <div class="filters">
-      <h2>🔍 Search & Filter</h2>
-
-      <div class="filter-grid">
-        <div>
-          <label>Company Name</label>
-          <input id="searchName" placeholder="e.g. Equinor">
-        </div>
-        <div>
-          <label>Industry</label>
-          <select id="industryFilter">
-            <option value="">All industries</option>
-          </select>
-        </div>
-        <div>
-          <label>Minimum employees</label>
-          <input id="minEmployees" type="number">
-        </div>
-        <div>
-          <label>Company type</label>
-          <select id="typeFilter">
-            <option value="">All types</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="button-group">
-        <button onclick="applyFilters()">Apply filters</button>
-        <button class="btn-reset" onclick="resetFilters()">Reset</button>
-      </div>
-    </div>
-
-    <div class="chart-section">
-      <h2>📊 Top industries</h2>
-      <canvas id="industryChart"></canvas>
-    </div>
-
-    <div class="table-container">
-      <h2>📋 Company directory</h2>
-      <div id="tableContent"></div>
-      <div class="pagination" id="pagination"></div>
-    </div>
-
+<div class="filters">
+  <div>
+    <label>Company name</label>
+    <input id="searchName" placeholder="e.g. DNB" />
   </div>
 
-  <script src="app.js"></script>
+  <div>
+    <label>Industry</label>
+    <select id="industryFilter"></select>
+  </div>
+
+  <div>
+    <label>Company type</label>
+    <select id="typeFilter"></select>
+  </div>
+
+  <div>
+    <label>Min employees</label>
+    <input id="minEmployees" type="number" placeholder="e.g. 100" />
+  </div>
+
+  <div>
+    <label>Min revenue (MNOK)</label>
+    <input id="minRevenueInput" type="number" placeholder="e.g. 500" />
+  </div>
+
+  <div>
+    <label>&nbsp;</label>
+    <button onclick="applyFilters()">Apply</button>
+  </div>
+
+  <div>
+    <label>&nbsp;</label>
+    <button class="secondary" onclick="resetFilters()">Reset</button>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat">
+    <div class="label">Companies</div>
+    <div class="value" id="totalCompanies">–</div>
+  </div>
+  <div class="stat">
+    <div class="label">1000+ employees</div>
+    <div class="value" id="largeCompanies">–</div>
+  </div>
+  <div class="stat">
+    <div class="label">Total employees</div>
+    <div class="value" id="totalEmployees">–</div>
+  </div>
+  <div class="stat">
+    <div class="label">Industries</div>
+    <div class="value" id="totalIndustries">–</div>
+  </div>
+</div>
+
+<div class="card">
+  <canvas id="industryChart" height="120"></canvas>
+</div>
+
+<div class="card">
+  <div id="tableContent"></div>
+  <div class="pagination" id="pagination"></div>
+</div>
+
+<script src="app.js"></script>
 </body>
 </html>
-
-
