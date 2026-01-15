@@ -65,44 +65,57 @@ async function fetchCompanies(initialLoad = false) {
 
 // ---------------- FETCH FINANCIALS (CORS-PROXY FIXED) ----------------
 async function enrichWithFinancials(list) {
-  await Promise.all(
-    list.map(async c => {
-      try {
-        const res = await fetch(`${REGNSKAP_PROXY}/${c.orgNr}`);
-        if (!res.ok) return;
+  for (const c of list) {
+    try {
+      const url =
+        "https://api.allorigins.win/raw?url=" +
+        encodeURIComponent(
+          `https://data.brreg.no/regnskapsregisteret/regnskap/${c.orgNr}`
+        );
 
-        const json = await res.json();
-
-        const regnskaper = json.regnskaper;
-        if (!Array.isArray(regnskaper) || regnskaper.length === 0) return;
-
-        const latest = regnskaper.sort(
-          (a, b) =>
-            (b.regnskapsperiode?.aar || 0) -
-            (a.regnskapsperiode?.aar || 0)
-        )[0];
-
-        const rr = latest.resultatregnskap;
-        const bal = latest.balanse;
-
-        c.revenue =
-          rr?.driftsinntekter?.salgsinntekt ?? null;
-
-        c.operatingResult =
-          rr?.driftsresultat ?? null;
-
-        c.assets =
-          bal?.eiendeler?.sumEiendeler ?? null;
-
-        c.equity =
-          bal?.egenkapitalGjeld?.egenkapital ?? null;
-
-      } catch (err) {
-        console.warn("Regnskap fetch failed", c.orgNr);
+      const res = await fetch(url);
+      if (!res.ok) {
+        console.warn("Financial fetch failed", c.orgNr, res.status);
+        continue;
       }
-    })
-  );
+
+      const json = await res.json();
+      const regnskaper = json.regnskaper;
+
+      if (!Array.isArray(regnskaper) || regnskaper.length === 0) {
+        console.warn("No regnskap data", c.orgNr);
+        continue;
+      }
+
+      const latest = regnskaper.sort(
+        (a, b) =>
+          (b.regnskapsperiode?.aar || 0) -
+          (a.regnskapsperiode?.aar || 0)
+      )[0];
+
+      const rr = latest.resultatregnskap || {};
+      const bal = latest.balanse || {};
+
+      // Revenue: handle both variants
+      c.revenue =
+        rr?.driftsinntekter?.sumDriftsinntekter ??
+        rr?.driftsinntekter?.salgsinntekt ??
+        null;
+
+      c.operatingResult = rr?.driftsresultat ?? null;
+
+      c.assets = bal?.eiendeler?.sumEiendeler ?? null;
+
+      c.equity =
+        bal?.egenkapitalGjeld?.egenkapital ??
+        null;
+
+    } catch (err) {
+      console.error("Regnskap error", c.orgNr, err);
+    }
+  }
 }
+
 
 // ---------------- FILTERS ----------------
 function applyFilters() {
@@ -249,3 +262,4 @@ function updateTable() {
 function fmt(v) {
   return v == null ? "–" : Math.round(v / 1_000_000).toLocaleString();
 }
+
