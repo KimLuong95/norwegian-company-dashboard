@@ -6,7 +6,7 @@ let chart;
 let currentSort = { column: "employees", direction: "desc" };
 
 const ENHETS_URL = "https://data.brreg.no/enhetsregisteret/api/enheter";
-const REGNSKAP_URL = "https://data.brreg.no/regnskapsregisteret/regnskap/opplysninger";
+const REGNSKAP_URL = "https://data.brreg.no/regnskapsregisteret/regnskap";
 const FETCH_LIMIT = 500;
 
 // ---------------- INIT ----------------
@@ -15,7 +15,7 @@ window.onload = () => {
   fetchCompanies(true);
 };
 
-// ---------------- FETCH ----------------
+// ---------------- FETCH COMPANIES ----------------
 async function fetchCompanies(initialLoad = false) {
   const name = searchName.value.trim();
   const minEmp = minEmployees.value;
@@ -48,11 +48,11 @@ async function fetchCompanies(initialLoad = false) {
     .sort((a, b) => b.employees - a.employees)
     .slice(0, 100);
 
-  await enrichFinancials(base);
+  await enrichWithFinancials(base);
 
-  // Apply revenue filter AFTER enrichment
   companies = base.filter(c =>
-    !minRevenueMNOK || (c.revenue && c.revenue >= minRevenueMNOK * 1_000_000)
+    !minRevenueMNOK ||
+    (c.revenue && c.revenue >= minRevenueMNOK * 1_000_000)
   );
 
   if (initialLoad) populateIndustryFilter(base);
@@ -62,27 +62,33 @@ async function fetchCompanies(initialLoad = false) {
   updateAll();
 }
 
-// ---------------- FINANCIALS ----------------
-async function enrichFinancials(list) {
+// ---------------- FETCH FINANCIALS ----------------
+async function enrichWithFinancials(list) {
   await Promise.all(
     list.map(async c => {
       try {
-        const r = await fetch(`${REGNSKAP_URL}/${c.orgNr}`);
-        if (!r.ok) return;
+        const res = await fetch(`${REGNSKAP_URL}/${c.orgNr}`);
+        if (!res.ok) return;
 
-        const j = await r.json();
-        const rr = j?.resultatregnskap;
-        const bal = j?.balanse;
+        const j = await res.json();
 
-        if (!rr || !bal) return;
+        const rr = j.resultatregnskap;
+        const bal = j.balanse;
 
-        c.revenue = rr.salgsinntekt ?? null;
-        c.operatingResult = rr.driftsresultat ?? null;
-        c.assets = bal.sumEiendeler ?? null;
-        c.equity = bal.egenkapital ?? null;
+        c.revenue =
+          rr?.driftsinntekter?.salgsinntekt ?? null;
+
+        c.operatingResult =
+          rr?.driftsresultat ?? null;
+
+        c.assets =
+          bal?.eiendeler?.sumEiendeler ?? null;
+
+        c.equity =
+          bal?.egenkapitalGjeld?.egenkapital ?? null;
 
       } catch {
-        // silently ignore
+        // ignore per-company errors
       }
     })
   );
@@ -105,7 +111,8 @@ function resetFilters() {
 // ---------------- DROPDOWNS ----------------
 function populateCompanyTypes() {
   ["", "AS", "ASA", "SA", "ENK", "ANS", "KS", "SF"].forEach(t => {
-    typeFilter.innerHTML += `<option value="${t}">${t || "All types"}</option>`;
+    typeFilter.innerHTML +=
+      `<option value="${t}">${t || "All types"}</option>`;
   });
 }
 
@@ -115,16 +122,18 @@ function populateIndustryFilter(data) {
   data.forEach(c => map.set(c.industryCode, c.industry));
   [...map.entries()]
     .sort((a, b) => a[1].localeCompare(b[1]))
-    .forEach(([code, name]) =>
-      industryFilter.innerHTML += `<option value="${code}">${name}</option>`
-    );
+    .forEach(([code, name]) => {
+      industryFilter.innerHTML +=
+        `<option value="${code}">${name}</option>`;
+    });
 }
 
 // ---------------- SORT ----------------
 function sortCompanies(column, silent = false) {
   if (!silent) {
     if (currentSort.column === column) {
-      currentSort.direction = currentSort.direction === "asc" ? "desc" : "asc";
+      currentSort.direction =
+        currentSort.direction === "asc" ? "desc" : "asc";
     } else {
       currentSort.column = column;
       currentSort.direction = "desc";
@@ -132,8 +141,8 @@ function sortCompanies(column, silent = false) {
   }
 
   companies.sort((a, b) => {
-    let A = a[column] ?? -Infinity;
-    let B = b[column] ?? -Infinity;
+    const A = a[column] ?? -Infinity;
+    const B = b[column] ?? -Infinity;
     return currentSort.direction === "asc" ? A - B : B - A;
   });
 
@@ -150,26 +159,40 @@ function updateAll() {
 
 function updateStats() {
   totalCompanies.textContent = companies.length;
-  largeCompanies.textContent = companies.filter(c => c.employees >= 1000).length;
+  largeCompanies.textContent =
+    companies.filter(c => c.employees >= 1000).length;
   totalEmployees.textContent =
-    Math.round(companies.reduce((s, c) => s + c.employees, 0) / 1000) + "K";
-  totalIndustries.textContent = new Set(companies.map(c => c.industryCode)).size;
+    Math.round(
+      companies.reduce((s, c) => s + c.employees, 0) / 1000
+    ) + "K";
+  totalIndustries.textContent =
+    new Set(companies.map(c => c.industryCode)).size;
 }
 
 // ---------------- CHART ----------------
 function updateChart() {
   const counts = {};
-  companies.forEach(c => counts[c.industry] = (counts[c.industry] || 0) + 1);
-  const top = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  companies.forEach(c => {
+    counts[c.industry] = (counts[c.industry] || 0) + 1;
+  });
+
+  const top = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
 
   if (chart) chart.destroy();
   chart = new Chart(industryChart, {
     type: "bar",
     data: {
       labels: top.map(t => t[0]),
-      datasets: [{ data: top.map(t => t[1]), backgroundColor: "#667eea" }]
+      datasets: [{
+        data: top.map(t => t[1]),
+        backgroundColor: "#667eea"
+      }]
     },
-    options: { plugins: { legend: { display: false } } }
+    options: {
+      plugins: { legend: { display: false } }
+    }
   });
 }
 
@@ -216,4 +239,3 @@ function updateTable() {
 function fmt(v) {
   return v == null ? "–" : Math.round(v / 1_000_000).toLocaleString();
 }
-
